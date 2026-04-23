@@ -209,3 +209,6 @@ __marimo__/
 datasets/
 notebooks/datasets/
 notebooks/results/
+
+CLAUDE.md
+.claude/
