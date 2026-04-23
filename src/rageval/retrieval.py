@@ -1,26 +1,20 @@
-"""Retrieval methods, metrics and model loading.
+"""Retrieval methods, metrics, model loaders.
 
-The four retrieval implementations (BM25, dense bi-encoder, SPLADE,
-MedCPT) all return BEIR-style ``{qid: {doc_id: score}}`` so they slot
-into the same evaluation harness.
+The four first-stage retrievers (BM25, dense, SPLADE, MedCPT) all return
+``{qid: {doc_id: score}}`` so the same ``evaluate`` works on every one of
+them.
 """
-
-from __future__ import annotations
 
 import gc
 import math
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
 import scipy.sparse as sp
 
 
-# ----------------------------------------------------------------------
-# Paths.  Anchored at repo root so scripts work no matter where they're
-# launched from.
-# ----------------------------------------------------------------------
-
+# Output paths anchored at the repo root so scripts work no matter where
+# they are launched from.
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / "notebooks" / "results"
 FEEDBACK2 = RESULTS / "feedback2" / "tables"
@@ -32,17 +26,12 @@ for d in (FEEDBACK2, NEXT_STAGE, DATASETS, CACHE):
     d.mkdir(parents=True, exist_ok=True)
 
 
-# ----------------------------------------------------------------------
-# Misc helpers
-# ----------------------------------------------------------------------
-
 def device():
     import torch
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def free_cuda():
-    """Drop python refs and reclaim the CUDA cache fragment."""
     gc.collect()
     try:
         import torch
@@ -52,13 +41,13 @@ def free_cuda():
         pass
 
 
-# ----------------------------------------------------------------------
-# Metrics
-# ----------------------------------------------------------------------
+# -- Metrics --
 
 def ndcg(ranked, qrel, k):
-    dcg = sum((2 ** qrel.get(d, 0) - 1) / math.log2(i + 2)
-               for i, d in enumerate(ranked[:k]))
+    dcg = sum(
+        (2 ** qrel.get(d, 0) - 1) / math.log2(i + 2)
+        for i, d in enumerate(ranked[:k])
+    )
     ideal = sorted(qrel.values(), reverse=True)[:k]
     idcg = sum((2 ** r - 1) / math.log2(i + 2) for i, r in enumerate(ideal))
     return dcg / idcg if idcg > 0 else 0.0
@@ -91,9 +80,9 @@ def average_precision(ranked, qrel, k, threshold=1):
 
 
 def evaluate(results, qrels, k_values=(1, 3, 5, 10)):
-    """Aggregate per-query metrics into an ``aggregate``/``per_query``
-    dict plus a 1-nDCG@10 loss array."""
-    per_q = {}
+    """Aggregate per-query metrics. Returns a dict with `aggregate`,
+    `per_query` and a 1-nDCG@10 `loss` array."""
+    per_query = {}
     for qid in qrels:
         if qid not in results:
             continue
@@ -104,50 +93,49 @@ def evaluate(results, qrels, k_values=(1, 3, 5, 10)):
             m[f"Recall@{k}"] = recall(ranked, qrels[qid], k)
             m[f"P@{k}"] = precision(ranked, qrels[qid], k)
             m[f"MAP@{k}"] = average_precision(ranked, qrels[qid], k)
-        per_q[qid] = m
-    if not per_q:
+        per_query[qid] = m
+
+    if not per_query:
         return {"aggregate": {}, "per_query": {}, "loss": np.array([])}
-    keys = next(iter(per_q.values())).keys()
-    agg = {k: float(np.mean([m[k] for m in per_q.values()])) for k in keys}
-    loss = np.array([1.0 - m["nDCG@10"] for m in per_q.values()])
-    return {"aggregate": agg, "per_query": per_q, "loss": loss}
 
+    keys = next(iter(per_query.values())).keys()
+    aggregate = {k: float(np.mean([m[k] for m in per_query.values()])) for k in keys}
+    loss = np.array([1.0 - m["nDCG@10"] for m in per_query.values()])
+    return {"aggregate": aggregate, "per_query": per_query, "loss": loss}
 
-# ----------------------------------------------------------------------
-# Corpus prep
-# ----------------------------------------------------------------------
 
 def prep_corpus(corpus):
-    """Return parallel (ids, texts) lists.  Title and body are joined."""
-    ids = list(corpus.keys())
-    texts = [(corpus[d].get("title", "") + " " + corpus[d].get("text", "")).strip()
-             for d in ids]
-    return ids, texts
+    """Parallel (doc_ids, doc_texts) lists. Title and body are joined."""
+    doc_ids = list(corpus.keys())
+    doc_texts = [
+        (corpus[d].get("title", "") + " " + corpus[d].get("text", "")).strip()
+        for d in doc_ids
+    ]
+    return doc_ids, doc_texts
 
 
-# ----------------------------------------------------------------------
-# Retrieval methods
-# ----------------------------------------------------------------------
+# -- Retrieval methods --
 
 def bm25(doc_ids, doc_texts, queries, top_k=100):
-    """BM25 via the bm25s package, single-threaded to dodge a known
-    multiprocessing bug on Colab kernels."""
+    """BM25 via bm25s. Pinned to a single thread because the multiprocessing
+    backend was hanging Colab kernels."""
     import bm25s
     if not queries:
         return {}
 
     corpus_tok = bm25s.tokenize(doc_texts, stopwords="en", show_progress=False)
-    bm = bm25s.BM25(k1=1.5, b=0.75)
-    bm.index(corpus_tok)
+    index = bm25s.BM25(k1=1.5, b=0.75)
+    index.index(corpus_tok)
 
     qids = list(queries)
-    qtok = bm25s.tokenize([queries[q] for q in qids], stopwords="en",
-                           show_progress=False)
+    q_tok = bm25s.tokenize([queries[q] for q in qids], stopwords="en",
+                            show_progress=False)
     k = min(top_k, len(doc_ids))
     try:
-        idx, scores = bm.retrieve(qtok, k=k, n_threads=1, show_progress=False)
-    except TypeError:  # older bm25s without n_threads
-        idx, scores = bm.retrieve(qtok, k=k)
+        idx, scores = index.retrieve(q_tok, k=k, n_threads=1, show_progress=False)
+    except TypeError:
+        # older bm25s without n_threads
+        idx, scores = index.retrieve(q_tok, k=k)
 
     return {
         qid: {doc_ids[idx[i][j]]: float(scores[i][j]) for j in range(k)}
@@ -162,17 +150,17 @@ def dense(doc_ids, doc_texts, queries, model, qpfx="", dpfx="",
     if not doc_ids or not queries:
         return {q: {} for q in queries}
 
-    doc_texts_in = [dpfx + t for t in doc_texts] if dpfx else doc_texts
-    doc_emb = model.encode(doc_texts_in, batch_size=batch,
-                            show_progress_bar=False,
-                            normalize_embeddings=True,
-                            convert_to_numpy=True).astype("float32")
+    doc_in = [dpfx + t for t in doc_texts] if dpfx else doc_texts
+    doc_emb = model.encode(
+        doc_in, batch_size=batch, show_progress_bar=False,
+        normalize_embeddings=True, convert_to_numpy=True,
+    ).astype("float32")
 
     qids = list(queries)
     q_in = [(qpfx + queries[q]) if qpfx else queries[q] for q in qids]
-    q_emb = model.encode(q_in, batch_size=32,
-                          normalize_embeddings=True,
-                          convert_to_numpy=True).astype("float32")
+    q_emb = model.encode(
+        q_in, batch_size=32, normalize_embeddings=True, convert_to_numpy=True,
+    ).astype("float32")
 
     scores = q_emb @ doc_emb.T
     k = min(top_k, len(doc_ids))
@@ -189,7 +177,7 @@ def dense(doc_ids, doc_texts, queries, model, qpfx="", dpfx="",
 
 def splade(doc_ids, doc_texts, queries, tok, model,
            top_k=100, batch=4, max_len=128):
-    """SPLADE: log-ReLU on MLM logits, max-pool, sparse matmul."""
+    """SPLADE: log(1+ReLU(MLM logits)), max-pool over tokens, sparse matmul."""
     import torch
     if not doc_ids or not queries:
         return {q: {} for q in queries}
@@ -204,8 +192,9 @@ def splade(doc_ids, doc_texts, queries, tok, model,
                 truncation=True, max_length=max_len).items()}
             with torch.no_grad():
                 v = torch.log(1 + torch.relu(model(**inp).logits))
+            # mask out PAD positions, then max-pool
             v = (v * inp["attention_mask"].unsqueeze(-1)).max(dim=1).values
-            # scipy.sparse needs float32+ so cast back from fp16 if needed
+            # cast fp16 -> fp32 before scipy.sparse
             rows.append(sp.csr_matrix(v.cpu().float().numpy()))
         return sp.vstack(rows)
 
@@ -220,14 +209,15 @@ def splade(doc_ids, doc_texts, queries, tok, model,
         top = np.argpartition(-scores[i], k)[:k] if k < len(doc_ids) else np.argsort(-scores[i])
         top = top[np.argsort(-scores[i][top])]
         out[qid] = {doc_ids[j]: float(scores[i][j]) for j in top}
+
     del doc_vecs, q_vecs, scores
     free_cuda()
     return out
 
 
 def medcpt(doc_ids, doc_texts, queries, q_tok, q_mod, a_tok, a_mod,
-            top_k=100, batch=8):
-    """MedCPT dual-encoder: separate query / article encoders, CLS pooling."""
+           top_k=100, batch=8):
+    """MedCPT dual-encoder. Separate query / article encoders, CLS pooling."""
     import torch
     import torch.nn.functional as F
     if not doc_ids or not queries:
@@ -235,14 +225,14 @@ def medcpt(doc_ids, doc_texts, queries, q_tok, q_mod, a_tok, a_mod,
 
     dev = device()
 
-    def encode(texts, tok, mod, max_len):
+    def encode(texts, tokenizer, mdl, max_len):
         embs = []
         for i in range(0, len(texts), batch):
-            inp = {k: v.to(dev) for k, v in tok(
+            inp = {k: v.to(dev) for k, v in tokenizer(
                 texts[i:i + batch], return_tensors="pt", padding=True,
                 truncation=True, max_length=max_len).items()}
             with torch.no_grad():
-                e = F.normalize(mod(**inp).last_hidden_state[:, 0, :], dim=-1)
+                e = F.normalize(mdl(**inp).last_hidden_state[:, 0, :], dim=-1)
             embs.append(e.cpu().numpy())
         return np.concatenate(embs).astype("float32")
 
@@ -257,65 +247,67 @@ def medcpt(doc_ids, doc_texts, queries, q_tok, q_mod, a_tok, a_mod,
         top = np.argpartition(scores[i], -k)[-k:]
         top = top[np.argsort(-scores[i][top])]
         out[qid] = {doc_ids[j]: float(scores[i][j]) for j in top}
+
     del doc_emb, q_emb, scores
     free_cuda()
     return out
 
 
-# ----------------------------------------------------------------------
-# Hybrid score fusion (BM25 + dense, with min-max normalisation)
-# ----------------------------------------------------------------------
+# -- Score fusion --
 
-def hybrid(bm_res, dn_res, queries, alpha=0.40):
-    out = {}
+def _minmax(arr):
+    lo, hi = float(arr.min()), float(arr.max())
+    return (arr - lo) / (hi - lo) if hi > lo else np.zeros_like(arr)
+
+
+def hybrid(bm25_res, dense_res, queries, alpha=0.40):
+    """Per-query min-max normalisation, then a linear blend."""
+    fused = {}
     for qid in queries:
-        sb = bm_res.get(qid, {})
-        sd = dn_res.get(qid, {})
+        sb = bm25_res.get(qid, {})
+        sd = dense_res.get(qid, {})
         cand = sorted(set(sb) | set(sd))
         if not cand:
-            out[qid] = {}
+            fused[qid] = {}
             continue
-        sba = np.array([sb.get(c, 0.0) for c in cand])
-        sda = np.array([sd.get(c, 0.0) for c in cand])
-
-        def mm(a):
-            lo, hi = float(a.min()), float(a.max())
-            return (a - lo) / (hi - lo) if hi > lo else np.zeros_like(a)
-
-        h = alpha * mm(sba) + (1 - alpha) * mm(sda)
-        out[qid] = {c: float(s) for c, s in zip(cand, h)}
-    return out
+        sb_arr = np.array([sb.get(c, 0.0) for c in cand])
+        sd_arr = np.array([sd.get(c, 0.0) for c in cand])
+        h = alpha * _minmax(sb_arr) + (1 - alpha) * _minmax(sd_arr)
+        fused[qid] = {c: float(s) for c, s in zip(cand, h)}
+    return fused
 
 
-def rrf(bm_res, dn_res, queries, k=60):
-    out = {}
+def rrf(bm25_res, dense_res, queries, k=60):
+    """Reciprocal Rank Fusion."""
+    fused = {}
     for qid in queries:
         scores = {}
-        for src in (bm_res.get(qid, {}), dn_res.get(qid, {})):
+        for src in (bm25_res.get(qid, {}), dense_res.get(qid, {})):
             for rank, d in enumerate(sorted(src, key=src.get, reverse=True)):
                 scores[d] = scores.get(d, 0.0) + 1.0 / (k + rank + 1)
-        out[qid] = scores
-    return out
+        fused[qid] = scores
+    return fused
 
 
-# ----------------------------------------------------------------------
-# Cross-encoder reranking
-# ----------------------------------------------------------------------
+# -- Cross-encoder reranking --
 
 def cross_encoder_rerank(queries, corpus, candidates, model, batch=4):
-    """Score every (query, candidate) pair with a sentence-transformers
-    CrossEncoder; output mirrors the first-stage retriever shape."""
+    """sentence-transformers CrossEncoder over (query, candidate) pairs.
+    Output mirrors the first-stage shape so it plugs back into evaluate()."""
     out = {}
     for qid in queries:
         cand = candidates.get(qid, [])
         if not cand:
             out[qid] = {}
             continue
-        texts = [(corpus[d].get("title", "") + " "
-                   + corpus[d].get("text", "")).strip() for d in cand]
-        scores = model.predict([(queries[qid], t) for t in texts],
-                                 batch_size=batch, show_progress_bar=False,
-                                 convert_to_numpy=True)
+        texts = [
+            (corpus[d].get("title", "") + " " + corpus[d].get("text", "")).strip()
+            for d in cand
+        ]
+        scores = model.predict(
+            [(queries[qid], t) for t in texts],
+            batch_size=batch, show_progress_bar=False, convert_to_numpy=True,
+        )
         order = np.argsort(-np.asarray(scores, dtype=float))
         out[qid] = {cand[i]: float(scores[i]) for i in order}
     return out
@@ -330,13 +322,16 @@ def medcpt_ce_rerank(queries, corpus, candidates, tok, model, batch=8):
         if not cand:
             out[qid] = {}
             continue
-        texts = [(corpus[d].get("title", "") + " "
-                   + corpus[d].get("text", "")).strip() for d in cand]
+        texts = [
+            (corpus[d].get("title", "") + " " + corpus[d].get("text", "")).strip()
+            for d in cand
+        ]
         scores = []
         for i in range(0, len(cand), batch):
-            inp = tok([(queries[qid], t) for t in texts[i:i + batch]],
-                       return_tensors="pt", truncation=True, padding=True,
-                       max_length=512).to(dev)
+            inp = tok(
+                [(queries[qid], t) for t in texts[i:i + batch]],
+                return_tensors="pt", truncation=True, padding=True, max_length=512,
+            ).to(dev)
             with torch.no_grad():
                 lg = model(**inp).logits.squeeze(-1).cpu().float().numpy()
             scores.extend(lg.tolist())
@@ -345,13 +340,12 @@ def medcpt_ce_rerank(queries, corpus, candidates, tok, model, batch=8):
     return out
 
 
-# ----------------------------------------------------------------------
-# Bootstrap CIs
-# ----------------------------------------------------------------------
+# -- Bootstrap CI --
 
 def paired_bootstrap(a, b, B=10_000, alpha=0.05, seed=42):
-    """Paired bootstrap CI for the mean of a-b."""
-    a, b = np.asarray(a, float), np.asarray(b, float)
+    """Paired bootstrap CI for the mean of (a - b)."""
+    a = np.asarray(a, float)
+    b = np.asarray(b, float)
     diffs = a - b
     rng = np.random.default_rng(seed)
     n = len(diffs)
@@ -365,10 +359,8 @@ def paired_bootstrap(a, b, B=10_000, alpha=0.05, seed=42):
     }
 
 
-# ----------------------------------------------------------------------
-# Model loaders.  No fancy registry -- just call the function and get
-# the model.  When you're done with a model, do `del model; free_cuda()`.
-# ----------------------------------------------------------------------
+# -- Model loaders --
+# Manual lifetime: call the loader, use the model, then `del model; free_cuda()`.
 
 def load_minilm():
     from sentence_transformers import SentenceTransformer
@@ -400,13 +392,13 @@ def load_medcpt():
     import torch
     from transformers import AutoTokenizer, AutoModel
     dt = torch.float16 if device() == "cuda" else torch.float32
-    qt = AutoTokenizer.from_pretrained("ncbi/MedCPT-Query-Encoder")
-    qm = AutoModel.from_pretrained(
+    q_tok = AutoTokenizer.from_pretrained("ncbi/MedCPT-Query-Encoder")
+    q_mod = AutoModel.from_pretrained(
         "ncbi/MedCPT-Query-Encoder", torch_dtype=dt).to(device()).eval()
-    at = AutoTokenizer.from_pretrained("ncbi/MedCPT-Article-Encoder")
-    am = AutoModel.from_pretrained(
+    a_tok = AutoTokenizer.from_pretrained("ncbi/MedCPT-Article-Encoder")
+    a_mod = AutoModel.from_pretrained(
         "ncbi/MedCPT-Article-Encoder", torch_dtype=dt).to(device()).eval()
-    return qt, qm, at, am
+    return q_tok, q_mod, a_tok, a_mod
 
 
 def load_bge_reranker():
@@ -415,8 +407,9 @@ def load_bge_reranker():
     kw = {}
     if device() == "cuda":
         kw["model_kwargs"] = {"torch_dtype": torch.float16}
-    return CrossEncoder("BAAI/bge-reranker-base", device=device(),
-                         max_length=512, **kw)
+    return CrossEncoder(
+        "BAAI/bge-reranker-base", device=device(), max_length=512, **kw,
+    )
 
 
 def load_medcpt_ce():
