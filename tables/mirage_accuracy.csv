@@ -1,0 +1,7 @@
+Task,Retriever,Generator,Accuracy,Status
+PubMedQA-labeled,None (closed-book),flan-t5-base,0.379,done
+PubMedQA-labeled,BM25,flan-t5-base,0.561,saturated
+PubMedQA-labeled,BGE-small,flan-t5-base,0.563,saturated
+PubMedQA-labeled,BGE-small + BGE-reranker,flan-t5-base,0.561,saturated
+PubMedQA-labeled,*,Llama-3.2-3B-Instruct,,not-run
+BioASQ-YN,*,*,,not-run

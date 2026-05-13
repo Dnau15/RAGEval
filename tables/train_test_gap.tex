@@ -1,0 +1,10 @@
+\begin{tabular}{lSSSSSS}
+\toprule
+\textbf{Quantity} & \textbf{BM25} & \textbf{Dense} & \textbf{BGE-small} & \textbf{E5-small} & \textbf{Logistic} & \textbf{LightGBM} \\
+\midrule
+$R_{\text{train}}$ & 0.7047 & 0.6792 & 0.6615 & 0.6743 & 0.6841 & 0.6207 \\
+$R_{\text{test}}$ & 0.7060 & 0.6827 & 0.6612 & 0.6733 & 0.6770 & 0.6675 \\
+Gap $\Delta_{\text{gen}}$ & +0.0013 & +0.0035 & -0.0003 & -0.0009 & -0.0071 & \textbf{+0.0468} \\
+Mann--Whitney $p$ & 0.9252 & 0.8768 & 0.9109 & 0.8867 & {---} & {---} \\
+\bottomrule
+\end{tabular}

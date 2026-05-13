@@ -1,0 +1,4 @@
+stratum,n_queries,BM25_nDCG@10,Dense_nDCG@10,Hybrid_nDCG@10,Dense_minus_BM25,Hybrid_minus_Dense
+Low IDF / plainer,108,0.3193,0.3532,0.3570,0.0338,0.0038
+Mid IDF,107,0.3124,0.3690,0.3789,0.0566,0.0099
+High IDF / technical,108,0.2503,0.2301,0.2786,-0.0202,0.0485

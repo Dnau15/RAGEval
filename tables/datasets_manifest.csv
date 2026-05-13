@@ -1,0 +1,6 @@
+dataset,beir_id,corpus_source,n_docs,n_queries_test,domain,query_style,note
+NFCorpus,nfcorpus,BEIR (UKP-Darmstadt mirror),3633,323,biomedical,Plain-language health questions,BEIR-filtered 3633 docs (full corpus has 9964)
+BioASQ-subset,bioasq,mini-BioASQ fallback (HF: rag-mini-bioasq),28001,500,biomedical (PubMed),Expert factoid / yes-no questions,Qrel-union pool with 0 distractors (degenerate). Stress case only.
+TREC-COVID,trec-covid,BEIR (UKP-Darmstadt mirror),171332,50,biomedical (COVID),Short topic statements,SPLADE and MedCPT skipped (compute budget)
+SciFact,scifact,BEIR (UKP-Darmstadt mirror),5183,300,scientific claims,Atomic scientific claims,
+ArguAna,arguana,BEIR (UKP-Darmstadt mirror),8674,1406,argumentation,Full-sentence counter-arguments,

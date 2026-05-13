@@ -1,0 +1,8 @@
+Method,nDCG@10,DeltaVsBestAlways,Status
+Always_BM25,0.3076,-0.0358,baseline
+Always_BGE_small,0.3393,-0.0041,baseline
+Static_Hybrid_alpha_0.40,0.3434,0.0000,baseline
+Always_BGE_small+BGE_reranker,0.3007,-0.0427,baseline
+Logistic_router,0.3230,-0.0204,learned
+LightGBM_router,0.3325,-0.0109,learned
+Oracle_router,0.4097,0.0663,oracle

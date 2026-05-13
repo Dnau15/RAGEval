@@ -44,6 +44,7 @@ if __name__ == "__main__":
     def phase_b_stage():
         phase_b.build_bioasq_subset()
         phase_b.run_rerankers()
+        phase_b.rerank_depth_and_ci()
         phase_b.run_router()
         phase_b.run_mirage()
 

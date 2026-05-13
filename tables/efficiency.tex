@@ -1,0 +1,12 @@
+\begin{tabular}{lrrrl}
+\toprule
+\textbf{Retriever} & \textbf{Index build (s)} & \textbf{Latency (ms/q)} & \textbf{Throughput (q/s)} & \textbf{Index memory} \\
+\midrule
+BM25 & 12.3 & 2.4 & 412 & inverted list (sparse) \\
+Dense (MiniLM) & 11.6 & 8.6 & 116 & 5 MB (3633 x 384 f32) \\
+BGE-small & 32.2 & 0.7 & 1,389 & 5 MB (3633 x 384 f32) \\
+E5-small & 33.1 & 0.6 & 1,561 & 5 MB (3633 x 384 f32) \\
+SPLADE & 38.4 & 2.8 & 353 & sparse CSR, ~151 nnz/doc \\
+MedCPT & 51.4 & 1.2 & 867 & 11 MB (3633 x 768 f32) \\
+\bottomrule
+\end{tabular}

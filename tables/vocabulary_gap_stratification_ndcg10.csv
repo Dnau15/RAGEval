@@ -1,0 +1,4 @@
+stratum,n_queries,BM25_nDCG@10,Dense_nDCG@10,Hybrid_nDCG@10,Dense_minus_BM25,Hybrid_minus_Dense
+Low gap,108,0.5267,0.4931,0.5577,-0.0336,0.0646
+Medium gap,107,0.3039,0.3406,0.3580,0.0367,0.0174
+High gap,108,0.0513,0.1183,0.0986,0.0670,-0.0197

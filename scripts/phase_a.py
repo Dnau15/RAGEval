@@ -136,8 +136,21 @@ def _bioasq_placeholder():
     }
 
 
+def _per_query_rows(ds_name, ev_dict):
+    """Long-format rows for per-query nDCG@10 across all methods in ev_dict."""
+    out = []
+    for method, ev in ev_dict.items():
+        for qid, m in ev["per_query"].items():
+            out.append({
+                "dataset": ds_name, "method": method, "qid": qid,
+                "nDCG@10": round(m["nDCG@10"], 6),
+            })
+    return out
+
+
 def first_stage_and_multi_dataset():
     nf = run_all_retrievers("nfcorpus", with_splade_medcpt=True)
+    per_query = _per_query_rows("NFCorpus", nf)
 
     # nfcorpus_canonical.csv: just the nDCG@10 column
     pd.DataFrame([
@@ -176,10 +189,16 @@ def first_stage_and_multi_dataset():
         ev = run_all_retrievers(
             info["beir_id"], with_splade_medcpt=not info["skip_heavy"])
         multi.append(_row_for(ds_name, ev))
+        per_query.extend(_per_query_rows(ds_name, ev))
 
     pd.DataFrame(multi).to_csv(
         FEEDBACK2 / "multi_dataset_ndcg10_v2.csv", index=False)
     print(f"\nwrote {FEEDBACK2 / 'multi_dataset_ndcg10_v2.csv'}")
+
+    pd.DataFrame(per_query).to_csv(
+        FEEDBACK2 / "multi_dataset_per_query_ndcg10.csv", index=False)
+    print(f"wrote {FEEDBACK2 / 'multi_dataset_per_query_ndcg10.csv'} "
+          f"({len(per_query)} rows)")
 
 
 # Hoeffding n_min (Table 11). Reads canonical + hybrid CSVs.

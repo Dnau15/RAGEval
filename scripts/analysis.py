@@ -107,9 +107,12 @@ def split_metrics_and_alpha():
     sweep.to_csv(NEXT_STAGE / "hybrid_alpha_sweep_dev.csv", index=False)
     print(f"alpha* on dev = {alpha}")
 
-    # Add Hybrid rows to the per-split table
+    # Add Hybrid rows to the per-split table; also stash per-query nDCG@10
+    # for BM25 / Dense / Hybrid across all splits so we can resample later
+    # without re-running inference.
     doc_ids, doc_texts = prep_corpus(corpus)
     rows = base.to_dict(orient="records")
+    pq_rows = []
     for split_name, payload in splits.items():
         bm25_res = bm25(doc_ids, doc_texts, payload["queries"])
         dense_res = dense(doc_ids, doc_texts, payload["queries"], minilm)
@@ -124,8 +127,20 @@ def split_metrics_and_alpha():
             "empirical_risk": float(loss.mean()),
             "loss_variance": float(loss.var(ddof=1)),
         })
+        for label, res in [
+            ("BM25", bm25_res), ("Dense", dense_res), ("Hybrid", fused),
+        ]:
+            pq = per_query_ndcg(res, payload["qrels"])
+            for qid, v in pq.items():
+                pq_rows.append({
+                    "split": split_name, "method": label,
+                    "qid": qid, "nDCG@10": round(float(v), 6),
+                })
     pd.DataFrame(rows).to_csv(
         NEXT_STAGE / "split_metrics_with_hybrid.csv", index=False)
+    pd.DataFrame(pq_rows).to_csv(
+        NEXT_STAGE / "nfcorpus_per_query_ndcg10.csv", index=False)
+    print(f"wrote nfcorpus_per_query_ndcg10.csv ({len(pq_rows)} rows)")
 
     # Test-split comparison: BM25 / Dense / Hybrid / RRF
     test_queries = splits["test"]["queries"]
@@ -215,6 +230,22 @@ def boot_and_subsampling(alpha):
     dense_pq_all = per_query_ndcg(dense_full, union_qrels)
     hybrid_pq_all = per_query_ndcg(hybrid_full, union_qrels)
 
+    # Persist union per-query so the bootstrap is reproducible from disk.
+    union_rows = []
+    for label, pq in [
+        ("BM25", bm25_pq_all),
+        ("Dense", dense_pq_all),
+        ("Hybrid", hybrid_pq_all),
+    ]:
+        for qid, v in pq.items():
+            union_rows.append({
+                "split": "train+dev+test", "method": label,
+                "qid": qid, "nDCG@10": round(float(v), 6),
+            })
+    pd.DataFrame(union_rows).to_csv(
+        NEXT_STAGE / "nfcorpus_union_per_query_ndcg10.csv", index=False)
+    print(f"wrote nfcorpus_union_per_query_ndcg10.csv ({len(union_rows)} rows)")
+
     rng = np.random.default_rng(42)
     rows = []
     for trial in range(2000):
@@ -293,7 +324,6 @@ def regression_and_stratifications():
             "tech": float(np.mean([idf.get(w, 1.0) for w in t])) if t else 0.0,
         })
     feats = pd.DataFrame(rows)
-    feats.to_csv(NEXT_STAGE / "vocabulary_gap_features.csv", index=False)
 
     minilm = load_minilm()
     bm25_res = bm25(doc_ids, doc_texts, queries)
@@ -306,6 +336,11 @@ def regression_and_stratifications():
     feats["Dense"] = feats["qid"].map(per_query_ndcg(dense_res, qrels))
     feats["Hybrid"] = feats["qid"].map(per_query_ndcg(hybrid_res, qrels))
     feats["delta"] = feats["Dense"] - feats["BM25"]
+    # Now feats has both the features (gap, len, tech) and the per-query
+    # nDCG@10 for BM25 / Dense / Hybrid plus the delta. Write it once.
+    feats.to_csv(NEXT_STAGE / "vocabulary_gap_features.csv", index=False)
+    print(f"wrote vocabulary_gap_features.csv ({len(feats)} rows, "
+          f"with per-query nDCG@10 columns)")
 
     rho_rows = []
     for label, x, y in [

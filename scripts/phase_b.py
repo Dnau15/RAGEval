@@ -193,16 +193,27 @@ def run_rerankers():
     reranker = load_bge_reranker()
     free_cuda()
     rows = []
+    pq_rows = []  # long-format per-query nDCG@10 for first-stage AND reranked
 
-    def agg_ndcg(res, qrels):
-        return evaluate(res, qrels)["aggregate"]["nDCG@10"]
+    def agg_and_pq(res, qrels):
+        ev = evaluate(res, qrels)
+        return ev["aggregate"]["nDCG@10"], {
+            qid: float(m["nDCG@10"]) for qid, m in ev["per_query"].items()
+        }
+
+    def record_pq(ds, fs_label, system, k, pq):
+        for qid, v in pq.items():
+            pq_rows.append({
+                "Dataset": ds, "FirstStage": fs_label, "System": system,
+                "k": k, "qid": qid, "nDCG@10": round(v, 6),
+            })
 
     def do_rerank(ds, fs_label, fs_res, qrels, corpus, queries, label):
         cand = {q: list(fs_res[q]) for q in queries}
         rer = cross_encoder_rerank(queries, corpus, cand, reranker)
         free_cuda()
-        fs_n = agg_ndcg(fs_res, qrels)
-        rer_n = agg_ndcg(rer, qrels)
+        fs_n, fs_pq = agg_and_pq(fs_res, qrels)
+        rer_n, rer_pq = agg_and_pq(rer, qrels)
         print(f"  [{ds}] {label}: {fs_n:.4f} -> {rer_n:.4f}  "
               f"(Δ={rer_n - fs_n:+.4f})")
         rows.append({
@@ -212,6 +223,8 @@ def run_rerankers():
             "Reranked_nDCG10": round(rer_n, 4),
             "Delta": round(rer_n - fs_n, 4), "Status": "done",
         })
+        record_pq(ds, fs_label, fs_label + " (first-stage)", 100, fs_pq)
+        record_pq(ds, fs_label, label, 100, rer_pq)
 
     # NFCorpus -- two first stages
     print("\n[NFCorpus]")
@@ -269,8 +282,8 @@ def run_rerankers():
         # NFCorpus, BGE first stage
         cand = {q: list(nf_fs_bge[q]) for q in nf_queries}
         rer = medcpt_ce_rerank(nf_queries, nf_corpus, cand, ce_tok, ce_mod)
-        fs_n = agg_ndcg(nf_fs_bge, nf_qrels)
-        rer_n = agg_ndcg(rer, nf_qrels)
+        fs_n, _ = agg_and_pq(nf_fs_bge, nf_qrels)
+        rer_n, rer_pq = agg_and_pq(rer, nf_qrels)
         rows.append({
             "Dataset": "NFCorpus", "FirstStage": "BGE-small",
             "FirstStage_nDCG10": round(fs_n, 4),
@@ -278,6 +291,8 @@ def run_rerankers():
             "Reranked_nDCG10": round(rer_n, 4),
             "Delta": round(rer_n - fs_n, 4), "Status": "done",
         })
+        record_pq("NFCorpus", "BGE-small",
+                  "BGE-small+MedCPT-CE@100", 100, rer_pq)
         print(f"  [NFCorpus] BGE-small+MedCPT-CE@100: "
               f"{fs_n:.4f} -> {rer_n:.4f}  (Δ={rer_n - fs_n:+.4f})")
 
@@ -285,8 +300,8 @@ def run_rerankers():
         cand = {q: list(ba_fs_bm25[q]) for q in cache["queries"]}
         rer = medcpt_ce_rerank(
             cache["queries"], cache["corpus"], cand, ce_tok, ce_mod)
-        fs_n = agg_ndcg(ba_fs_bm25, cache["qrels"])
-        rer_n = agg_ndcg(rer, cache["qrels"])
+        fs_n, _ = agg_and_pq(ba_fs_bm25, cache["qrels"])
+        rer_n, rer_pq = agg_and_pq(rer, cache["qrels"])
         rows.append({
             "Dataset": "BioASQ-subset", "FirstStage": "BM25",
             "FirstStage_nDCG10": round(fs_n, 4),
@@ -294,13 +309,170 @@ def run_rerankers():
             "Reranked_nDCG10": round(rer_n, 4),
             "Delta": round(rer_n - fs_n, 4), "Status": "done",
         })
+        record_pq("BioASQ-subset", "BM25",
+                  "BM25+MedCPT-CE@100", 100, rer_pq)
         print(f"  [BioASQ-subset] BM25+MedCPT-CE@100: "
               f"{fs_n:.4f} -> {rer_n:.4f}  (Δ={rer_n - fs_n:+.4f})")
         del ce_tok, ce_mod
         free_cuda()
 
     pd.DataFrame(rows).to_csv(FEEDBACK2 / "reranker_ndcg10.csv", index=False)
+    pd.DataFrame(pq_rows).to_csv(
+        FEEDBACK2 / "reranker_per_query_ndcg10.csv", index=False)
     print(f"\nwrote {FEEDBACK2 / 'reranker_ndcg10.csv'}")
+    print(f"wrote {FEEDBACK2 / 'reranker_per_query_ndcg10.csv'} "
+          f"({len(pq_rows)} rows)")
+
+
+# ---- B.2b  Reranker depth ablation + paired bootstrap CIs ----
+#
+# Reuses the same six (dataset, first-stage) pairs as run_rerankers, but
+# also sweeps the candidate-pool depth k in {10, 20, 50, 100} and stores
+# per-query nDCG@10 so we can compute paired bootstrap CIs of
+# Δ = nDCG@10(rerank) − nDCG@10(first-stage).
+#
+# The depth sweep tells us whether a negative Δ at k=100 is a task
+# mismatch (negative at every depth) or a recall-ceiling artefact
+# (negative only at deep k, harmless at small k). The paired CIs tell us
+# whether each Δ is significantly different from zero per dataset.
+
+DEPTHS = (10, 20, 50, 100)
+
+
+def _per_q_ndcg10(res, qrels):
+    return {
+        qid: ndcg(sorted(r, key=r.get, reverse=True), qrels.get(qid, {}), 10)
+        for qid, r in res.items()
+    }
+
+
+def _top_k_candidates(fs_res, k):
+    out = {}
+    for qid, scores in fs_res.items():
+        ordered = sorted(scores, key=scores.get, reverse=True)[:k]
+        out[qid] = ordered
+    return out
+
+
+def rerank_depth_and_ci(depths=DEPTHS, B=10_000):
+    """Depth sweep + paired bootstrap CIs for the BGE-reranker rows.
+
+    Produces:
+        reranker_depth_sweep.csv     wide format -- one row per
+                                     (dataset, first-stage, k) with
+                                     aggregate nDCG@10 and Delta.
+        reranker_paired_bootstrap.csv  one row per (dataset, first-stage, k)
+                                     with paired-bootstrap mean diff,
+                                     95% CI and P(rerank > first-stage).
+    """
+    reranker = load_bge_reranker()
+    free_cuda()
+
+    sweep_rows = []
+    ci_rows = []
+    pq_rows = []  # long-format per-query nDCG@10 for every (ds, fs, k)
+
+    def evaluate_combo(ds, fs_label, fs_res, qrels, corpus, queries, reranker_name):
+        fs_pq = _per_q_ndcg10(fs_res, qrels)
+        fs_agg = float(np.mean(list(fs_pq.values())))
+        for k in depths:
+            cand = _top_k_candidates(fs_res, k)
+            rer = cross_encoder_rerank(queries, corpus, cand, reranker)
+            free_cuda()
+            rer_pq = _per_q_ndcg10(rer, qrels)
+            rer_agg = float(np.mean(list(rer_pq.values())))
+            qids = sorted(rer_pq)
+            a = np.array([rer_pq[q] for q in qids])
+            b = np.array([fs_pq.get(q, 0.0) for q in qids])
+            ci = paired_bootstrap(a, b, B=B)
+            sweep_rows.append({
+                "Dataset": ds, "FirstStage": fs_label,
+                "Reranker": reranker_name, "k": k,
+                "FirstStage_nDCG10": round(fs_agg, 4),
+                "Reranked_nDCG10": round(rer_agg, 4),
+                "Delta": round(rer_agg - fs_agg, 4),
+                "n_queries": len(qids),
+            })
+            ci_rows.append({
+                "Dataset": ds, "FirstStage": fs_label,
+                "Reranker": reranker_name, "k": k,
+                "n_queries": len(qids), "B": B,
+                "mean_diff": round(ci["mean_diff"], 4),
+                "ci_lo": round(ci["ci_lo"], 4),
+                "ci_hi": round(ci["ci_hi"], 4),
+                "p_a_gt_b": round(ci["p_a_gt_b"], 3),
+            })
+            for qid in qids:
+                pq_rows.append({
+                    "Dataset": ds, "FirstStage": fs_label,
+                    "Reranker": reranker_name, "k": k, "qid": qid,
+                    "first_stage_nDCG@10": round(float(fs_pq.get(qid, 0.0)), 6),
+                    "reranked_nDCG@10": round(float(rer_pq[qid]), 6),
+                    "delta": round(float(rer_pq[qid] - fs_pq.get(qid, 0.0)), 6),
+                })
+            print(f"  [{ds}/{fs_label}] k={k:3d}  Δ={rer_agg - fs_agg:+.4f}  "
+                  f"CI=[{ci['ci_lo']:+.4f}, {ci['ci_hi']:+.4f}]  "
+                  f"P(rerank>FS)={ci['p_a_gt_b']:.2f}")
+
+    # NFCorpus -- BGE-small and BM25 first stages
+    print("\n[NFCorpus]")
+    corpus, queries, qrels = load_beir("nfcorpus", split="test")
+    doc_ids, doc_texts = prep_corpus(corpus)
+    bge = load_bge()
+    nf_fs_bge = dense(doc_ids, doc_texts, queries, bge)
+    del bge
+    free_cuda()
+    nf_fs_bm25 = bm25(doc_ids, doc_texts, queries)
+    evaluate_combo("NFCorpus", "BGE-small", nf_fs_bge, qrels, corpus, queries,
+                   "BGE-reranker-base")
+    evaluate_combo("NFCorpus", "BM25", nf_fs_bm25, qrels, corpus, queries,
+                   "BGE-reranker-base")
+
+    # BioASQ (from B.1 cache)
+    print("\n[BioASQ-subset]")
+    cache = pickle.load(open(CACHE / "bioasq_results.pkl", "rb"))
+    evaluate_combo(
+        "BioASQ-subset", "BM25", cache["results"]["BM25"], cache["qrels"],
+        cache["corpus"], cache["queries"], "BGE-reranker-base",
+    )
+
+    # TREC-COVID with E5
+    print("\n[TREC-COVID]")
+    corpus, queries, qrels = load_beir("trec-covid", split="test")
+    doc_ids, doc_texts = prep_corpus(corpus)
+    e5 = load_e5()
+    fs = dense(doc_ids, doc_texts, queries, e5,
+               qpfx="query: ", dpfx="passage: ")
+    del e5
+    free_cuda()
+    evaluate_combo("TREC-COVID", "E5-small", fs, qrels, corpus, queries,
+                   "BGE-reranker-base")
+
+    # SciFact + ArguAna with BGE
+    for ds_name, beir_id in [("SciFact", "scifact"), ("ArguAna", "arguana")]:
+        print(f"\n[{ds_name}]")
+        corpus, queries, qrels = load_beir(beir_id, split="test")
+        doc_ids, doc_texts = prep_corpus(corpus)
+        bge = load_bge()
+        fs = dense(doc_ids, doc_texts, queries, bge)
+        del bge
+        free_cuda()
+        evaluate_combo(ds_name, "BGE-small", fs, qrels, corpus, queries,
+                       "BGE-reranker-base")
+
+    del reranker
+    free_cuda()
+
+    pd.DataFrame(sweep_rows).to_csv(
+        FEEDBACK2 / "reranker_depth_sweep.csv", index=False)
+    pd.DataFrame(ci_rows).to_csv(
+        FEEDBACK2 / "reranker_paired_bootstrap.csv", index=False)
+    pd.DataFrame(pq_rows).to_csv(
+        FEEDBACK2 / "reranker_depth_per_query_ndcg10.csv", index=False)
+    print(f"\nwrote {FEEDBACK2 / 'reranker_depth_sweep.csv'}")
+    print(f"wrote {FEEDBACK2 / 'reranker_paired_bootstrap.csv'}")
+    print(f"wrote {FEEDBACK2 / 'reranker_depth_per_query_ndcg10.csv'} "
+          f"({len(pq_rows)} rows)")
 
 
 # ---- B.3  Per-query router on NFCorpus ----
@@ -508,7 +680,27 @@ def run_router():
          "R_test": round(1 - gbm_te, 4),
          "Gap": round((1 - gbm_te) - (1 - gbm_tr), 4)},
     ]).to_csv(FEEDBACK2 / "router_train_test_gap.csv", index=False)
-    print("  wrote router_test, router_feature_importance, router_train_test_gap")
+
+    # Persist per-query: features, per-strategy nDCG@10, oracle label,
+    # and router predictions on every split. This is what makes the
+    # bootstrap/train-test gap re-computable from disk without re-running
+    # the encoders.
+    log_preds = log_pipe.predict(df_all[FEATURES].values)
+    gbm_preds = gbm.predict(df_all[FEATURES].values)
+    perq_out = df_all.copy()
+    perq_out["logistic_pred"] = log_preds
+    perq_out["lightgbm_pred"] = gbm_preds
+    perq_out["logistic_score"] = perq_out[STRATS].values[
+        np.arange(len(perq_out)), log_preds]
+    perq_out["lightgbm_score"] = perq_out[STRATS].values[
+        np.arange(len(perq_out)), gbm_preds]
+    perq_out["oracle_score"] = perq_out[STRATS].values.max(axis=1)
+    perq_out.to_csv(
+        FEEDBACK2 / "router_per_query.csv", index=False)
+    print("  wrote router_test, router_feature_importance, "
+          "router_train_test_gap, router_per_query")
+    print(f"  router_per_query: {len(perq_out)} rows "
+          f"({list(perq_out.columns)})")
 
 
 # ---- B.4  Downstream PubMedQA with flan-t5-base (Llama optional) ----
@@ -626,6 +818,7 @@ def run_mirage():
             out[0, inp.shape[-1]:], skip_special_tokens=True))
 
     scored = []
+    per_q = []  # one row per (retriever, generator, question)
     gens = [("flan-t5-base", gen_flan)]
     if have_llama:
         gens.append(("Llama-3.2-3B-Instruct", gen_llama))
@@ -635,8 +828,15 @@ def run_mirage():
             correct = 0
             for r in tqdm(rows, desc=f"{retr} | {gen_name}", leave=False):
                 ctx = contexts[retr].get(r["qid"], [])
-                if gen_fn(_format_prompt(r["question"], ctx)) == r["answer"]:
-                    correct += 1
+                pred = gen_fn(_format_prompt(r["question"], ctx))
+                ok = int(pred == r["answer"])
+                correct += ok
+                per_q.append({
+                    "Task": "PubMedQA-labeled",
+                    "Retriever": retr, "Generator": gen_name,
+                    "qid": r["qid"], "predicted": pred,
+                    "gold": r["answer"], "correct": ok,
+                })
             acc = correct / len(rows)
             scored.append({
                 "Task": "PubMedQA-labeled", "Retriever": retr,
@@ -647,11 +847,15 @@ def run_mirage():
             free_cuda()
 
     pd.DataFrame(scored).to_csv(FEEDBACK2 / "mirage_accuracy.csv", index=False)
+    pd.DataFrame(per_q).to_csv(
+        FEEDBACK2 / "mirage_per_question.csv", index=False)
     print(f"\nwrote {FEEDBACK2 / 'mirage_accuracy.csv'}")
+    print(f"wrote {FEEDBACK2 / 'mirage_per_question.csv'} ({len(per_q)} rows)")
 
 
 if __name__ == "__main__":
     build_bioasq_subset()
     run_rerankers()
+    rerank_depth_and_ci()
     run_router()
     run_mirage()

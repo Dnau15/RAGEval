@@ -1,0 +1,6 @@
+Dataset,Domain,# Docs,# Queries,BM25 nDCG@10,Dense nDCG@10,BGE-small nDCG@10,E5-small nDCG@10,SPLADE nDCG@10,MedCPT nDCG@10,Notes
+NFCorpus,biomedical,3633,323,0.2940,0.3173,0.3388,0.3267,0.3327,0.3246,Canonical NFCorpus test run
+BioASQ-subset,biomedical,28001,500,0.7544,0.5392,0.6836,0.6658,0.6733,0.6101,"Degenerate: qrel-union pool with 0 distractors. Stress case, not biomedical evidence."
+TREC-COVID,biomedical,171332,50,0.5759,0.4539,0.6448,0.7238,,,SPLADE and MedCPT skipped due to compute budget
+SciFact,scientific,5183,300,0.6617,0.6451,0.7200,0.6875,0.6327,0.7103,
+ArguAna,argumentation,8674,1406,0.3606,0.3698,0.4287,0.3100,0.3942,0.1332,

@@ -1,0 +1,7 @@
+model,R_train,R_test,gap,mw_p,kind
+BM25,0.7047,0.7060,0.0013,0.9252,first-stage
+Dense,0.6792,0.6827,0.0035,0.8768,first-stage
+BGE-small,0.6615,0.6612,-0.0003,0.9109,first-stage
+E5-small,0.6743,0.6733,-0.0009,0.8867,first-stage
+Logistic_router,0.6841,0.6770,-0.0071,,router
+LightGBM_router,0.6207,0.6675,0.0468,,router

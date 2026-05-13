@@ -1,0 +1,9 @@
+Dataset,FirstStage,FirstStage_nDCG10,RerankedSystem,Reranked_nDCG10,Delta,Status
+NFCorpus,BGE-small,0.3393,BGE-small+BGE-reranker@100,0.3007,-0.0386,done
+NFCorpus,BM25,0.3076,BM25+BGE-reranker@100,0.3082,0.0006,done
+BioASQ-subset,BM25,0.7544,BM25+BGE-reranker@100,0.7080,-0.0464,degenerate-corpus
+TREC-COVID,E5-small,0.7238,E5-small+BGE-reranker@100,0.7540,0.0302,done
+SciFact,BGE-small,0.7200,BGE-small+BGE-reranker@100,0.7091,-0.0109,done
+ArguAna,BGE-small,0.4287,BGE-small+BGE-reranker@100,0.1860,-0.2428,done
+NFCorpus,BGE-small,0.3393,BGE-small+MedCPT-CE@100,0.3664,0.0271,done
+BioASQ-subset,BM25,0.7544,BM25+MedCPT-CE@100,0.8057,0.0513,degenerate-corpus

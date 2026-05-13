@@ -1,0 +1,15 @@
+\begin{tabular}{llSSSS}
+\toprule
+\textbf{Dataset} & \textbf{First-stage} & \textbf{$k=10$} & \textbf{$k=20$} & \textbf{$k=50$} & \textbf{$k=100$} \\
+\midrule
+NFCorpus & BGE-small & {---} & {---} & {---} & -0.0386 \\
+NFCorpus & BM25 & {---} & {---} & {---} & +0.0006 \\
+BioASQ-subset$^{\dagger}$ & BM25 & {---} & {---} & {---} & -0.0464 \\
+TREC-COVID & E5-small & {---} & {---} & {---} & +0.0302 \\
+SciFact & BGE-small & {---} & {---} & {---} & -0.0109 \\
+ArguAna & BGE-small & {---} & {---} & {---} & -0.2428 \\
+\bottomrule
+\end{tabular}
+
+% Cells show $\Delta$ nDCG@10 = reranked $-$ first-stage. Empty cells await the Colab rerun.
+% $^{\dagger}$ degenerate corpus, see BioASQ caveat.

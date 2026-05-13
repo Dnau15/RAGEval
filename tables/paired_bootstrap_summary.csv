@@ -1,0 +1,5 @@
+contrast,scheme,mean_diff,ci_lo,ci_hi,p_a_gt_b
+Dense - BM25,Paired bootstrap (test),0.0221,-0.0016,0.0449,
+Hybrid - Dense,Point estimate (test),0.0208,,,
+Dense - BM25,Query-subset (3237),0.0261,0.0041,0.0471,0.990
+Hybrid - Dense,Query-subset (3237),0.0230,0.0123,0.0344,1.000

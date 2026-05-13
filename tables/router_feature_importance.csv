@@ -1,0 +1,7 @@
+feature,gain,share
+bm25_top1,15387.6,0.387
+tech,14542.3,0.366
+gap,6488.0,0.163
+len,2718.8,0.068
+med_share,530.3,0.013
+is_question,358.0,0.009

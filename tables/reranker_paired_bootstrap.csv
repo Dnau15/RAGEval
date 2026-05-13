@@ -1,0 +1,7 @@
+Dataset,FirstStage,Reranker,k,n_queries,B,mean_diff,ci_lo,ci_hi,p_a_gt_b
+NFCorpus,BGE-small,BGE-reranker-base,100,323,10000,-0.0386,,,
+NFCorpus,BM25,BGE-reranker-base,100,323,10000,0.0006,,,
+BioASQ-subset,BM25,BGE-reranker-base,100,500,10000,-0.0464,,,
+TREC-COVID,E5-small,BGE-reranker-base,100,50,10000,0.0302,,,
+SciFact,BGE-small,BGE-reranker-base,100,300,10000,-0.0109,,,
+ArguAna,BGE-small,BGE-reranker-base,100,1406,10000,-0.2428,,,

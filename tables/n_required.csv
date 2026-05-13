@@ -1,0 +1,5 @@
+A,B,observed_gap,hoeffding_n_required_95pct
+BGE-small,BM25,0.0448,919
+BGE-small,E5-small,0.0121,12598
+Hybrid,Dense,0.0208,4274
+Dense,BM25,0.0233,3394

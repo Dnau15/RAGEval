@@ -49,16 +49,21 @@ This report studies how the inductive bias of a retriever shapes
 performance on biomedical retrieval. Six retrievers (BM25, MiniLM,
 BGE-small, E5-small, SPLADE, MedCPT) are compared on five BEIR-style
 benchmarks. BGE-small is the strongest single system on NFCorpus
-(nDCG@10 = 0.3388), while E5-small wins at nDCG@1 (0.4231). MedCPT
+(nDCG@10 = 0.3388); E5-small wins at nDCG@1 (0.4231). MedCPT
 collapses to 0.1332 on ArguAna, a 0.228 loss against BM25. A
 general-domain BGE cross-encoder reranker hurts on four of five
-datasets, but the in-domain MedCPT cross-encoder improves NFCorpus by
-0.027 and BioASQ-subset by 0.051. A learned per-query router with six
-features beats Always-BM25 but does not beat a static BM25+BGE-small
-hybrid (0.3434). On PubMedQA-labeled, retrieval lifts flan-t5-base
-from 0.379 to 0.561. The findings support No Free Lunch: no single
-retriever or reranker dominates, and biomedical gains come from
-domain-aligned reranking rather than stronger general-domain models.
+datasets; the in-domain MedCPT cross-encoder improves NFCorpus by
+0.027. For per-query routing on NFCorpus, the oracle reaches 0.4097,
+$+0.066$ above the static BM25+BGE-small hybrid (0.3434); the learned
+routers tested here do not close that gap, so the routing signal
+exists but is hard to predict from query features alone. Two rows are
+reported as caveats rather than claims: BioASQ-subset is a
+degenerate-corpus stress case (zero distractors on the run that
+produced these numbers), and the PubMedQA-labeled section is a
+saturation sanity check on a tiny candidate pool. The findings support
+No Free Lunch: no single retriever or reranker dominates, and
+biomedical gains come from domain-aligned reranking rather than from
+stronger general-domain models.
 \end{abstract}
 
 \vspace{4pt}
@@ -261,23 +266,7 @@ nDCG@1 but moves above BM25 from rank~3 onwards.
     two systems was limited to nDCG@10, MAP@10, Recall@10 and P@10.}
     \label{tab:nfcorpus_6way}
     \small
-    \begin{tabular}{lSSSSSS}
-        \toprule
-        \textbf{Metric} & \textbf{BM25} & \textbf{Dense} & \textbf{BGE-small} & \textbf{E5-small} & \textbf{SPLADE} & \textbf{MedCPT} \\
-        \midrule
-        nDCG@1     & 0.4087 & 0.3911 & 0.4138 & \textbf{0.4231} & {---}   & {---}   \\
-        nDCG@3     & 0.3500 & 0.3605 & \textbf{0.3920} & 0.3673 & {---}   & {---}   \\
-        nDCG@5     & 0.3264 & 0.3400 & \textbf{0.3715} & 0.3513 & {---}   & {---}   \\
-        nDCG@10    & 0.2940 & 0.3173 & \textbf{0.3388} & 0.3267 & 0.3327  & 0.3246  \\
-        \midrule
-        MAP@10     & 0.2081 & 0.2277 & \textbf{0.2456} & 0.2333 & 0.2439 & 0.2324 \\
-        Recall@10  & 0.1373 & 0.1550 & 0.1583 & 0.1595 & 0.1593 & \textbf{0.1599} \\
-        P@10       & 0.2074 & 0.2433 & \textbf{0.2508} & 0.2390 & 0.2390 & 0.2424 \\
-        \midrule
-        Empirical risk $\hat{R}$ & 0.7060 & 0.6827 & \textbf{0.6612} & 0.6733 & 0.6673 & 0.6754 \\
-        Loss variance            & 0.0967 & 0.0970 & 0.1018 & 0.1006 & 0.1014 & 0.1000 \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/nfcorpus_full_metrics.tex}
 \end{table}
 
 The nDCG@10 ranking is BGE-small (0.3388) $>$ SPLADE (0.3327) $>$
@@ -308,20 +297,13 @@ Table~\ref{tab:nfcorpus_6way}.
     \centering
     \caption{nDCG@10 across all retrievers and datasets. The best result
     per row is in bold. Cells marked ``--'' on TREC-COVID denote runs
-    skipped due to the available compute budget.}
+    skipped due to the available compute budget. The dagger ($\dagger$)
+    on BioASQ-subset marks a degenerate-corpus row that is kept as a
+    stress case and not used as biomedical evidence
+    (see Section~\ref{subsec:multi}).}
     \label{tab:multi_dataset}
     \small
-    \begin{tabular}{lSSSSSS}
-        \toprule
-        \textbf{Dataset} & \textbf{BM25} & \textbf{Dense} & \textbf{BGE-small} & \textbf{E5-small} & \textbf{SPLADE} & \textbf{MedCPT} \\
-        \midrule
-        NFCorpus      & 0.2940 & 0.3173 & \textbf{0.3388} & 0.3267 & 0.3327 & 0.3246 \\
-        BioASQ-subset & \textbf{0.7544} & 0.5392 & 0.6836 & 0.6658 & 0.6733 & 0.6101 \\
-        TREC-COVID    & 0.5759 & 0.4539 & 0.6448          & \textbf{0.7238} & {---}  & {---}  \\
-        SciFact       & 0.6617 & 0.6451 & \textbf{0.7200} & 0.6875 & 0.6327 & 0.7103 \\
-        ArguAna       & 0.3606 & 0.3698 & \textbf{0.4287} & 0.3100 & 0.3942 & 0.1332 \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/multi_dataset.tex}
 \end{table}
 
 \paragraph{BioASQ-subset caveat.}
@@ -333,9 +315,19 @@ task becomes artificially easy and biases the comparison towards
 exact-match methods: BM25 nDCG@10 = 0.7544 here, against a published
 full-corpus baseline of about 0.46 ($+0.30$ inflation). Every learned
 retriever loses to BM25 by margins that are at least partly driven by
-the same effect. The BioASQ-subset row is therefore best read as a
-\emph{control} on degenerate-corpus behaviour, not as evidence that
-PubMed-aligned encoders are weaker than BM25 on PubMed-derived data.
+the same effect.
+
+\textbf{The BioASQ-subset row is therefore not used as evidence about
+biomedical retrieval anywhere in this report.} It is kept in
+Table~\ref{tab:multi_dataset} (and the corresponding rows in
+Table~\ref{tab:reranker}) as a stress case, so that the reader can see
+how the same retrievers and rerankers behave when the corpus is
+degenerate. All biomedical claims in this report rest on NFCorpus and
+TREC-COVID; SciFact and ArguAna are kept as out-of-domain controls.
+Re-running BioASQ with a real distractor corpus (e.g.\ the gated
+official BioASQ-BEIR release, or PubMed abstracts as distractors) is
+listed in Section~\ref{sec:limitations} as the natural fix and is left
+to future work.
 
 \paragraph{Mean differences.}
 Mean nDCG@10 differences against BM25 across the five datasets are:
@@ -385,21 +377,7 @@ Table~\ref{tab:reranker}.
     change in mean nDCG@10 with respect to the first stage.}
     \label{tab:reranker}
     \small
-    \begin{tabular}{llSSS}
-        \toprule
-        \textbf{Dataset} & \textbf{First-stage} & \textbf{First-stage nDCG@10} & \textbf{Reranked nDCG@10} & \textbf{$\Delta$} \\
-        \midrule
-        NFCorpus      & BGE-small + BGE-reranker@100 & 0.3393 & 0.3007          & -0.0386 \\
-        NFCorpus      & BM25 + BGE-reranker@100      & 0.3076 & 0.3082          & +0.0006 \\
-        BioASQ-subset & BM25 + BGE-reranker@100      & 0.7544 & 0.7080          & -0.0464 \\
-        TREC-COVID    & E5-small + BGE-reranker@100  & 0.7238 & \textbf{0.7540} & +0.0302 \\
-        SciFact       & BGE-small + BGE-reranker@100 & 0.7200 & 0.7091          & -0.0109 \\
-        ArguAna       & BGE-small + BGE-reranker@100 & 0.4287 & 0.1860          & -0.2428 \\
-        \midrule
-        NFCorpus      & BGE-small + MedCPT-CE@100 & 0.3393 & \textbf{0.3664} & +0.0271 \\
-        BioASQ-subset & BM25 + MedCPT-CE@100      & 0.7544 & \textbf{0.8057} & +0.0513 \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/reranker.tex}
 \end{table}
 
 \paragraph{Calibration note.}
@@ -416,18 +394,102 @@ calibration-invariant.
 The cross-encoder track gives three observations. BGE-reranker-base
 does not help on most datasets. Of the five first-stage / dataset
 pairs only TREC-COVID gains ($+0.0302$); NFCorpus BGE-small drops by
-$-0.0386$, BioASQ-subset BM25 by $-0.0464$, SciFact by $-0.0109$, and
-ArguAna by $-0.2428$. A stronger general-domain reranker is not
-automatically a stronger pipeline. The in-domain MedCPT cross-encoder
-gives clean positive deltas on the two biomedical datasets: $+0.0271$
-on NFCorpus and $+0.0513$ on BioASQ-subset. The two strongest
-pipelines in the study are these MedCPT-CE combinations (NFCorpus
-0.3664, BioASQ-subset 0.8057). The ArguAna collapse of $-0.2428$ is
-the largest single negative $\Delta$ in the report. ArguAna asks for
+$-0.0386$, SciFact by $-0.0109$, ArguAna by $-0.2428$, and BioASQ by
+$-0.0464$ on the degenerate-corpus index (read as a stress case).
+A stronger general-domain reranker is not automatically a stronger
+pipeline.
+
+The in-domain MedCPT cross-encoder gives a clean positive delta on
+NFCorpus ($+0.0271$). The BioASQ row also moves up by $+0.0513$, but
+this is on the same degenerate corpus as the first-stage BioASQ row
+and is reported only for completeness; it is not a clean biomedical
+reranker claim. The clean biomedical reranker result in this report is
+therefore the NFCorpus MedCPT-CE row, which lifts the strongest
+biomedical pipeline to nDCG@10 = 0.3664.
+
+The ArguAna collapse of $-0.2428$ is the largest single negative
+$\Delta$ in the report and deserves a closer look. A plausible
+hypothesis is task / domain mismatch: ArguAna asks for
 counter-arguments, where ``relevant'' means \emph{contradicts} the
-query, and an entailment-trained cross-encoder produces misleading
-scores. The reranker inherits the inductive bias of its training
-data.
+query, and an entailment-trained cross-encoder may produce misleading
+scores on this objective. The competing hypothesis is that the
+collapse is a candidate-depth artefact: at $k=100$ the reranker has
+many wrong candidates to bring forward, while at smaller $k$ it would
+have less room to do damage. Section~\ref{subsec:reranker_depth_ci}
+adds a depth ablation and paired bootstrap CIs that let us tell these
+two hypotheses apart.
+
+\subsection{Reranker depth and paired confidence intervals}
+\label{subsec:reranker_depth_ci}
+
+The $\Delta$ values in Table~\ref{tab:reranker} are point estimates at
+candidate depth $k = 100$. Two pieces of evidence are added here to
+support (or retract) the reranker claims in
+Section~\ref{subsec:reranker}: a candidate-depth ablation at
+$k \in \{10, 20, 50, 100\}$, and a paired bootstrap 95\% CI on
+$\Delta = \text{nDCG@10}_{\text{rerank}} - \text{nDCG@10}_{\text{first-stage}}$
+at the same $k=100$ depth used in Table~\ref{tab:reranker}.
+
+\paragraph{Depth ablation.}
+For each (dataset, first-stage) pair the BGE reranker is applied to
+the top-$k$ candidates of the first stage, for $k$ in
+$\{10, 20, 50, 100\}$. nDCG@10 is then measured on the reranked
+list. Table~\ref{tab:reranker_depth} reports $\Delta$ at each depth.
+The diagnostic question is whether the negative $\Delta$ values at
+$k=100$ in Section~\ref{subsec:reranker} persist at smaller $k$. If
+they do, the reranker is fighting the task and a task / domain
+mismatch claim is justified. If $\Delta$ moves towards zero (or
+becomes positive) at $k=10$, the negative result is a recall-ceiling
+artefact rather than a real mismatch, and the claim should be
+retracted.
+
+\begin{table}[ht]
+    \centering
+    \caption{Candidate-depth ablation for the BGE-reranker-base over
+    the six (dataset, first-stage) pairs of Section~\ref{subsec:reranker}.
+    Cells show $\Delta$ nDCG@10. Empty cells require the Colab rerun
+    in \texttt{phase\_b.rerank\_depth\_and\_ci}; the $k=100$ column is
+    the same value as in Table~\ref{tab:reranker}.}
+    \label{tab:reranker_depth}
+    \small
+    \input{tables/reranker_depth.tex}
+\end{table}
+
+\paragraph{Paired confidence intervals.}
+Table~\ref{tab:reranker_ci} reports a paired bootstrap CI on $\Delta$
+at $k=100$ for the same six pairs. The bootstrap resamples the test
+queries $B = 10{,}000$ times, evaluates both first-stage and reranked
+rankings on the same resampled queries, and reports the 2.5\% and
+97.5\% quantiles of the resampled mean difference. A CI that strictly
+excludes zero is what would let us claim that the reranker
+significantly helps or hurts on a given dataset at the 5\% level. A
+CI that includes zero means the observed $\Delta$ is consistent with
+sampling noise on that test set.
+
+\begin{table}[ht]
+    \centering
+    \caption{Paired bootstrap 95\% CI for the BGE-reranker $\Delta$ at
+    $k=100$. $\hat{\Delta}$ matches the corresponding row in
+    Table~\ref{tab:reranker}. The CI and $P(\text{rerank}>\text{FS})$
+    columns require the Colab rerun.}
+    \label{tab:reranker_ci}
+    \small
+    \input{tables/reranker_ci.tex}
+\end{table}
+
+\paragraph{Reading the result.}
+The point estimates of $\Delta$ at $k=100$ are already in
+Tables~\ref{tab:reranker_depth} and~\ref{tab:reranker_ci}. The
+small-$k$ columns and the CI columns are populated by the function
+\texttt{phase\_b.rerank\_depth\_and\_ci} on a Colab T4 (the
+\texttt{tables/} CSVs are then refreshed via \texttt{python
+scripts/build\_tables.py --refresh}). With those numbers in hand, the
+ArguAna task-mismatch claim of Section~\ref{subsec:reranker} stays as
+written only if the ArguAna row stays negative across all $k$. If
+$\Delta$ trends towards zero at $k=10$, the claim is downgraded to a
+recall-ceiling observation in the conclusion. Reporting the protocol
+and the CSV stubs now makes the next iteration of this report a
+one-command refresh rather than a re-edit.
 
 \subsection{Paired bootstrap confidence intervals}
 \label{subsec:paired_bootstrap}
@@ -453,16 +515,7 @@ evaluated on the same resampled queries.
     of resamples in which $A$ has higher mean nDCG@10 than $B$.}
     \label{tab:paired_boot}
     \small
-    \begin{tabular}{llSSc}
-        \toprule
-        \textbf{Contrast} & \textbf{Scheme} & \textbf{Mean $\hat{\Delta}$} & \textbf{95\% CI} & $P(A{>}B)$ \\
-        \midrule
-        Dense  $-$ BM25   & Paired boot.\ (test)   & 0.0221 & {[-0.0016,\, +0.0449]} & n/a      \\
-        Hybrid $-$ Dense  & Point estimate (test)  & 0.0208 & {---}                  & ---      \\
-        Dense  $-$ BM25   & Query-subset (3{,}237) & 0.0261 & {[+0.0041,\, +0.0471]} & 99.0\%   \\
-        Hybrid $-$ Dense  & Query-subset (3{,}237) & 0.0230 & {[+0.0123,\, +0.0344]} & 100.0\%  \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/paired_bootstrap.tex}
 \end{table}
 
 For Dense vs.\ BM25 the paired bootstrap on the test set gives
@@ -520,19 +573,7 @@ intervals with $B=10{,}000$.
     so coefficient sizes are comparable.}
     \label{tab:regression}
     \small
-    \begin{tabular}{lSSSc}
-        \toprule
-        \textbf{Feature} & \textbf{Coef} & \textbf{95\% CI} & \textbf{Boot $p$} & \textbf{Sig.} \\
-        \midrule
-        Intercept               & +0.0233 & {[+0.0014,\, +0.0459]} & 0.037 & $*$    \\
-        Vocabulary gap          & +0.0475 & {[+0.0249,\, +0.0713]} & {$<\!0.001$} & $***$  \\
-        Query length (tokens)   & +0.0112 & {[-0.0168,\, +0.0403]} & 0.430 & {---}  \\
-        Technicality (mean IDF) & -0.0343 & {[-0.0648,\, -0.0053]} & 0.019 & $*$    \\
-        \midrule
-        $R^2$                   & 0.071   & & & \\
-        $n$                     & 323     & & & \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/regression.tex}
 \end{table}
 
 Two coefficients are significant. A one-standard-deviation increase in
@@ -578,6 +619,23 @@ signal). The first three are the same features as in
 Section~\ref{subsec:regression}; the last three are added because
 $R^2 = 0.071$ leaves substantial $\Delta(q)$ variance unexplained.
 
+\paragraph{Disclaimer: one feature is retrospective.}
+The vocabulary gap is computed against the ground-truth relevant
+documents (the qrels). At deployment time the qrels are not known, so
+this feature is not available to a real router. The router results in
+this section therefore include a retrospective signal and are best
+read as a near-oracle upper bound on what a router with this feature
+family could reach, not as a deployment number. The other five
+features (query length, mean IDF, question-form flag, medical-token
+share, BM25 top-1 score) are computable from the query alone or from
+cheap first-stage scores, so they are deployable. We keep the
+retrospective feature on purpose. The main finding below is negative
+(the learned routers do not beat the static hybrid), and that finding
+becomes stronger rather than weaker when the routers fail with the
+retrospective feature on board. Replacing the vocabulary-gap feature
+with deployable proxies (e.g.\ BM25/Dense rank agreement, score margins)
+is left to future work.
+
 \paragraph{Models.}
 Three router variants are trained on the NFCorpus train and dev splits
 with per-query labels $\arg\max_s \text{nDCG@10}_s(q)$ over the four
@@ -596,21 +654,7 @@ strategy set can reach.
     best-of-four upper bound.}
     \label{tab:router}
     \small
-    \begin{tabular}{lSS}
-        \toprule
-        \textbf{Method} & \textbf{nDCG@10} & \textbf{$\Delta$ vs best Always} \\
-        \midrule
-        Always BM25                                       & 0.3076 & -0.0358 \\
-        Always BGE-small                                  & 0.3393 & -0.0041 \\
-        Static Hybrid (BM25 $+$ BGE-small, $\alpha\!=\!0.40$) & \textbf{0.3434} & 0.0000 \\
-        Always BGE-small $+$ BGE-reranker@100             & 0.3007 & -0.0427 \\
-        \midrule
-        Logistic router                                   & 0.3230 & -0.0204 \\
-        LightGBM router                                   & 0.3325 & -0.0109 \\
-        \midrule
-        Oracle router (upper bound)                       & 0.4097 & +0.0663 \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/router_test.tex}
 \end{table}
 
 \paragraph{Hybrid composition.}
@@ -625,19 +669,31 @@ otherwise Hybrid would be a duplicate of Always BGE-small. The
 difference in the dense component, not a re-tuning of $\alpha$.
 
 \paragraph{Reading the result.}
-The result is mixed. The learned routers do not beat the strongest
-static baseline: LightGBM (0.3325) trails both the Static Hybrid
-(0.3434) and Always BGE-small (0.3393). They do beat Always BM25
-($+0.025$ for LightGBM, $+0.015$ for logistic) and Always BGE+rerank
-($+0.032$ for LightGBM), so the routing signal is real, but smaller
-than the gain from picking the right static fusion. The oracle reaches
-0.4097, which is $+0.0663$ above Static Hybrid: there is real per-query
-heterogeneity to exploit, equivalent to a 19\% relative lift if a
-perfect router existed. Closing that gap is bounded by how much of
-$\Delta(q)$ the six features predict, which $R^2 = 0.071$ already
-shows is small. Document-side features (corpus coverage of the topic,
-qrel density) are not available at query time and are the natural next
-step.
+The main finding is negative. Even with the retrospective
+vocabulary-gap feature on board, the learned routers do not beat the
+strongest static baseline. LightGBM reaches 0.3325 and the logistic
+router 0.3230 on the test split; the Static Hybrid reaches 0.3434
+and Always BGE-small reaches 0.3393. Both learned routers do beat
+Always BM25 ($+0.025$ for LightGBM, $+0.015$ for logistic), so the
+routing signal is real, but it is smaller than the gain from picking
+the right static fusion in the first place.
+
+The Oracle row paints a different picture. The per-query best-of-four
+reaches 0.4097 on the test split, which is $+0.0663$ above Static
+Hybrid. The per-query heterogeneity is therefore large: a perfect
+router with this strategy set would lift the test set by 19\% relative
+to the best static baseline. The interesting question is not whether
+routing is worth doing in principle but why a simple learned router
+fails to close most of this oracle gap. Two reasons are visible. The
+six features explain only about 7\% of $\Delta(q)$ variance
+(Section~\ref{subsec:regression}, $R^2 = 0.071$); most of the
+per-query variance lives in signals these features do not capture.
+The label space is also small: the router chooses among four discrete
+strategies, which limits how much fine-grained per-query control any
+classifier can deliver. A continuous per-query mixing weight
+$\alpha(q)$ would give the oracle more room and would likely give a
+learned router more to fit, at the cost of making the oracle upper
+bound less well-defined.
 
 The LightGBM feature-importance gain is reported in
 Table~\ref{tab:router_features}. The dominant predictor is
@@ -654,18 +710,7 @@ regression highlighted.
     \caption{LightGBM router feature importance (gain).}
     \label{tab:router_features}
     \small
-    \begin{tabular}{lSS}
-        \toprule
-        \textbf{Feature} & \textbf{Gain} & \textbf{Share of total} \\
-        \midrule
-        bm25\_top1   & 15387.6 & 38.7\% \\
-        tech         & 14542.3 & 36.6\% \\
-        gap          &  6488.0 & 16.3\% \\
-        len          &  2718.8 &  6.8\% \\
-        med\_share   &   530.3 &  1.3\% \\
-        is\_question &   358.0 &  0.9\% \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/router_features.tex}
 \end{table}
 
 The router is the only model in the study that is fit to the NFCorpus
@@ -691,18 +736,7 @@ Table~\ref{tab:efficiency} reports indexing time, per-query latency
     builds would be roughly $10\times$ slower.}
     \label{tab:efficiency}
     \small
-    \begin{tabular}{lrrrl}
-        \toprule
-        \textbf{Retriever} & \textbf{Index build (s)} & \textbf{Latency (ms/q)} & \textbf{Throughput (q/s)} & \textbf{Index memory} \\
-        \midrule
-        BM25              & 12.3 & 2.4 & 412            & inverted list (sparse) \\
-        Dense (MiniLM)    & 11.6 & 8.6 & 116            & 5\,MB (3633 $\times$ 384 f32) \\
-        BGE-small         & 32.2 & 0.7 & 1{,}389        & 5\,MB (3633 $\times$ 384 f32) \\
-        E5-small          & 33.1 & 0.6 & 1{,}561        & 5\,MB (3633 $\times$ 384 f32) \\
-        SPLADE            & 38.4 & 2.8 & 353            & sparse CSR, $\approx 151$ nnz/doc \\
-        MedCPT            & 51.4 & 1.2 & 867            & 11\,MB (3633 $\times$ 768 f32) \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/efficiency.tex}
 \end{table}
 
 BGE-small is at the same time the strongest bi-encoder by quality and
@@ -733,16 +767,7 @@ contrasts of interest.
     $\delta=0.05$) using observed NFCorpus nDCG@10 gaps.}
     \label{tab:n_required}
     \small
-    \begin{tabular}{lSS}
-        \toprule
-        \textbf{Pair} & \textbf{Observed gap $\hat{\Delta}$} & \textbf{$n_{\min}$} \\
-        \midrule
-        BGE-small $-$ BM25  & +0.0448 & 919 \\
-        BGE-small $-$ E5-small & +0.0121 & 12{,}598 \\
-        Hybrid $-$ Dense & +0.0208 & 4{,}274 \\
-        Dense $-$ BM25 & +0.0233 & 3{,}394 \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/n_required.tex}
 \end{table}
 
 Each row is tied to a specific claim. Row 1 corresponds to the main
@@ -785,18 +810,7 @@ test (3{,}237 queries in total).
     so Dense wins in at least 97.5\% of resamples.}
     \label{tab:subsampling}
     \small
-    \begin{tabular}{lSSSS}
-        \toprule
-        \textbf{Quantity} & \textbf{Mean} & \textbf{$Q_{2.5}$} & \textbf{$Q_{97.5}$} & \textbf{Std} \\
-        \midrule
-        BM25               & 0.2924 & 0.2610 & 0.3238 & 0.0160 \\
-        Dense              & 0.3185 & 0.2865 & 0.3514 & 0.0164 \\
-        Hybrid             & 0.3415 & 0.3089 & 0.3741 & 0.0166 \\
-        \midrule
-        Dense $-$ BM25     & 0.0261 & 0.0041 & 0.0471 & 0.0111 \\
-        Hybrid $-$ Dense   & 0.0230 & 0.0123 & 0.0344 & 0.0056 \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/subsampling.tex}
 \end{table}
 
 \subsection{Train--test generalisation gap}
@@ -819,16 +833,7 @@ $\Delta_{\text{gen}} = R_{\text{test}} - R_{\text{train}}$.
     (323 queries).}
     \label{tab:gap}
     \small
-    \begin{tabular}{lSSSSSS}
-        \toprule
-        \textbf{Quantity} & \textbf{BM25} & \textbf{Dense} & \textbf{BGE-small} & \textbf{E5-small} & \textbf{Logistic} & \textbf{LightGBM} \\
-        \midrule
-        $R_{\text{train}}$           & 0.7047 & 0.6792 & 0.6615  & 0.6743  & 0.6841 & 0.6207 \\
-        $R_{\text{test}}$            & 0.7060 & 0.6827 & 0.6612  & 0.6733  & 0.6770 & 0.6675 \\
-        Gap $\Delta_{\text{gen}}$    & 0.0013 & 0.0035 & -0.0003 & -0.0009 & -0.0071 & \textbf{+0.0468} \\
-        Mann--Whitney $p$            & 0.9252 & 0.8768 & 0.9109  & 0.8867  & {---}  & {---}  \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/train_test_gap.tex}
 \end{table}
 
 The four first-stage gaps are all below $0.004$ in absolute value and
@@ -935,15 +940,7 @@ The vocabulary gap is $1 - \max_{d \in \text{qrel}(q)}
 \text{overlap}(q, d)$.}
 \label{tab:vocab_gap_strat}
 \small
-\begin{tabular}{lSSSSS}
-\toprule
-\textbf{Stratum} & \textbf{$n$} & \textbf{BM25} & \textbf{Dense} & \textbf{Hybrid} & \textbf{Dense$-$BM25} \\
-\midrule
-Low gap     & 108 & 0.5267 & 0.4931 & \textbf{0.5577} & -0.0336 \\
-Medium gap  & 107 & 0.3039 & 0.3406 & \textbf{0.3580} & +0.0367 \\
-High gap    & 108 & 0.0513 & \textbf{0.1183} & 0.0986 & +0.0670 \\
-\bottomrule
-\end{tabular}
+\input{tables/vocab_gap_strat.tex}
 \end{table}
 
 \begin{table}[ht]
@@ -952,15 +949,7 @@ High gap    & 108 & 0.0513 & \textbf{0.1183} & 0.0986 & +0.0670 \\
 (tertile split).}
 \label{tab:tech_strat}
 \small
-\begin{tabular}{lSSSSS}
-\toprule
-\textbf{Stratum} & \textbf{$n$} & \textbf{BM25} & \textbf{Dense} & \textbf{Hybrid} & \textbf{Dense$-$BM25} \\
-\midrule
-Low IDF / plainer     & 108 & 0.3193 & 0.3532 & \textbf{0.3570} & +0.0338 \\
-Mid IDF               & 107 & 0.3124 & 0.3690 & \textbf{0.3789} & +0.0566 \\
-High IDF / technical  & 108 & \textbf{0.2503} & 0.2301 & 0.2786 & -0.0202 \\
-\bottomrule
-\end{tabular}
+\input{tables/tech_strat.tex}
 \end{table}
 
 The vocabulary-gap Spearman correlation with $\Delta(q)$ is
@@ -998,41 +987,34 @@ include the required login).
     were planned but are not reported in this draft (see note below).}
     \label{tab:mirage}
     \small
-    \begin{tabular}{lllS}
-        \toprule
-        \textbf{Task} & \textbf{Retriever} & \textbf{Generator} & \textbf{Accuracy} \\
-        \midrule
-        PubMedQA-labeled & None (closed-book)        & flan-t5-base & 0.379 \\
-        PubMedQA-labeled & BM25                      & flan-t5-base & \textbf{0.561} \\
-        PubMedQA-labeled & BGE-small                 & flan-t5-base & \textbf{0.563} \\
-        PubMedQA-labeled & BGE-small + BGE-reranker  & flan-t5-base & \textbf{0.561} \\
-        \midrule
-        \multicolumn{4}{l}{\emph{Llama-3.2-3B-Instruct rows: not run.
-        The model is gated and the Colab session did not}} \\
-        \multicolumn{4}{l}{\emph{include a successful HuggingFace
-        login, so the Llama generator silently fell back to}} \\
-        \multicolumn{4}{l}{\emph{flan-t5-base only.}} \\
-        \multicolumn{4}{l}{\emph{BioASQ Y/N rows: not run. The
-        available BioASQ loader returned no yes/no records on}} \\
-        \multicolumn{4}{l}{\emph{this run, so the task was skipped at
-        the dataset stage.}} \\
-        \bottomrule
-    \end{tabular}
+    \input{tables/mirage.tex}
 \end{table}
 
-The four populated cells produce two observations. First, retrieval
-matters: closed-book accuracy is 0.379 (chance is $\approx 0.34$ for a
-3-way classification), and adding any of the three retrievers raises
-it to 0.561--0.563, a $+0.18$ absolute lift. Second, the choice of
-retriever does not move the needle on PubMedQA + flan-t5: BM25
-(0.561), BGE-small (0.563) and BGE-small + BGE-reranker (0.561) are
-within $\pm 0.002$, well below $1\sigma$ of a binomial at $p=0.56$
-(about 0.016). The PubMedQA-labeled corpus indexes only ten
-candidate passages per question, so even a weak retriever surfaces
-the relevant passage in the top five and the generator saturates. A
-stronger generator might amplify smaller retriever-quality
-differences, which is the natural extension once Llama runs are
-available.
+\paragraph{Read this section as a saturation sanity check.}
+The PubMedQA-labeled experiment is included to confirm that the
+pipeline carries evidence end-to-end, not as evidence about
+retrieval-method choice for RAG. The PubMedQA-labeled corpus ships
+only ten candidate passages per question, and the gold passage is
+almost always inside that pool. Once the top-five evidence reaches
+the generator, all three retrievers (BM25, BGE-small, BGE-small +
+BGE-reranker) feed essentially the same passages. The point estimates
+in Table~\ref{tab:mirage} are 0.561, 0.563 and 0.561 -- within
+$\pm 0.002$ and well below $1\sigma$ of a binomial at $p=0.56$
+(about 0.016). The retrieval comparison is therefore uninformative
+by construction; it is reported only for completeness and is
+\emph{not} used in this report as evidence that BM25, BGE-small or
+the BGE reranker are equivalent on RAG tasks in general.
+
+One observation is worth keeping. Closed-book flan-t5-base reaches
+0.379 on this 3-way task (chance is $\approx 0.34$), and adding any
+top-5 retrieval lifts it to $\approx 0.56$. The $+0.18$ absolute lift
+is not a clean test of retriever quality -- the candidate pool is
+too small for that -- but it does confirm the pipeline propagates
+retrieved evidence to the generator. A clean RAG retrieval-choice
+experiment would rebuild this task with a realistic distractor
+corpus (e.g.\ a PubMed-abstracts index at the 100k-document scale).
+This is listed in Section~\ref{sec:limitations} and left to future
+work.
 
 % -------------------------------------------------------
 \section{Limitations}
@@ -1056,44 +1038,59 @@ much higher with GPU-accelerated FAISS. The conclusions in
 Section~\ref{subsec:efficiency} apply to CPU inference, not to
 production GPU pipelines.
 
-\textbf{(4) BioASQ subset is degenerate on this run.} BioASQ-subset
+\textbf{(4) PubMedQA candidate pool is too small to test retrieval.}
+The PubMedQA-labeled task in Section~\ref{sec:downstream} ships only
+ten candidate passages per question, so all three retrievers feed
+near-identical evidence to the generator and the rows in
+Table~\ref{tab:mirage} saturate at $\approx 0.56$. The
+BM25/BGE-small/+reranker comparison is therefore not interpretable
+as RAG retrieval-choice evidence. Rebuilding the task with a
+realistic distractor corpus (e.g.\ a 100k-document PubMed-abstracts
+index) is the natural fix.
+
+\textbf{(5) BioASQ subset is degenerate on this run.} BioASQ-subset
 contains 28{,}001 documents in a qrel-union pool with zero distractors
 because the loader that succeeded provided a small public mirror.
-This biases the BioASQ row towards lexical retrieval; the row should
-be read as a control on degenerate-corpus behaviour, not as a clean
-biomedical generalisation result. Re-running with the gated official
-BioASQ-BEIR release (14M documents) is the natural fix.
+This biases the BioASQ row towards lexical retrieval. The row is
+reported as a stress / control case only and is not used as
+biomedical retrieval evidence (see
+Section~\ref{subsec:multi}). Re-running with the gated official
+BioASQ-BEIR release (14M documents) or with a custom
+PubMed-distractor pool is the natural fix.
 
 % -------------------------------------------------------
 \section{Conclusion}
 
 The empirical picture is non-uniform on every axis. No single
 retriever wins on all five datasets: BGE-small wins NFCorpus, SciFact
-and ArguAna and is second on TREC-COVID, where E5-small is best;
-BM25 wins the no-distractor BioASQ-subset, but only because the
-corpus contains no truly irrelevant documents. On the four
+and ArguAna, and is second on TREC-COVID, where E5-small is best.
+BioASQ-subset is degenerate on this run and is excluded from
+biomedical claims (Section~\ref{subsec:multi}). On the four
 non-degenerate datasets BGE-small averages $+0.060$ above BM25, which
-is the largest mean of any learned system, while MedCPT averages
-$-0.073$ across the five datasets and collapses to 0.1332 on ArguAna.
+is the largest mean of any learned system. MedCPT collapses to 0.1332
+on ArguAna ($-0.227$ vs.\ BM25), the largest undisputed negative gap
+in the study.
 
 A stronger general-domain reranker does not give a stronger pipeline.
 BGE-reranker-base hurts on four of five datasets and only TREC-COVID
-gains ($+0.030$). The clean positive cases come from the in-domain
-MedCPT cross-encoder ($+0.027$ on NFCorpus, $+0.051$ on
-BioASQ-subset), with the opposite sign of the first-stage MedCPT
-result on the same data. Domain alignment is most useful when the
-model attends jointly to query and document, not when query and
-document are encoded separately.
+gains ($+0.030$). The clean positive case is the in-domain MedCPT
+cross-encoder on NFCorpus ($+0.027$), which has the opposite sign of
+the first-stage MedCPT result on the same data. Domain alignment is
+most useful when the model attends jointly to query and document, not
+when query and document are encoded separately.
 
-The per-query router finds real but small heterogeneity. LightGBM
-beats Always-BM25 by $+0.025$ but loses to a static BM25+BGE-small
-hybrid by $-0.011$. The oracle is $+0.066$ above the static hybrid,
-so the routing signal exists, but the six features explain only about
-7\% of $\Delta(q)$. The train--test gap follows the expected
-capacity-vs-sample-size pattern: the linear router stays near the
-variance baseline, the boosted router has a gap of $+0.0468$, more
-than ten times the baseline, and still does not beat the static
-hybrid. A capacity-controlled router is the next step.
+The per-query router finds real heterogeneity but does not beat the
+best static fusion. LightGBM beats Always-BM25 by $+0.025$ but loses
+to the static BM25+BGE-small hybrid by $-0.011$, even with a
+retrospective vocabulary-gap feature on board (see disclaimer in
+Section~\ref{subsec:router}). The oracle is $+0.066$ above the static
+hybrid, so the routing signal exists, but the six features explain
+only about 7\% of $\Delta(q)$. The train--test gap follows the
+expected capacity-vs-sample-size pattern: the linear router stays
+near the variance baseline, the boosted router has a gap of $+0.0468$
+and still does not beat the static hybrid. A capacity-controlled
+router with a fully deployable feature set is the natural next
+step.
 
 The aggregate reading is an instance of No Free Lunch. No retriever
 dominates, no reranker dominates, and a fitted router does not yet
